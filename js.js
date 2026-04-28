@@ -47,9 +47,10 @@ async function send(message) {
         text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
         const lines = text.split("\n");
+        const lastLines = lines.slice(-50);
 
         const html = await Promise.all(
-            lines.map(async line => {
+            lastLines.map(async line => {
                 const [user, ...rest] = line.split(";");
                 const message = rest.join(";");
                 const decrypted = await aesDecrypt(message, CONFIG.KEY);
