@@ -25,9 +25,10 @@ async function aesDecrypt(encoded, password) {
 }
 
 const chat = document.getElementById("chat");
+const lastMsg = document.getElementById("lastMsg");
 
 async function get() {
-    const res = await fetch(`${CONFIG.API}?action=get`, {
+    const res = await fetch(`${CONFIG.API}`, {
         method: "GET"
     });
     const data = res.text();
@@ -35,16 +36,20 @@ async function get() {
     return data;
 }
 
-async function send(message) {
-    fetch(`${CONFIG.API}?action=send&text=${message}&name=${CONFIG.NICKNAME}`, {
-        method: "GET"
+function send(message, nickname = CONFIG.NICKNAME) {
+    fetch(`${CONFIG.API}`, {
+        method: "POST",
+        contentType: "application/json",
+        body: JSON.stringify({
+            text: message,
+            name: nickname
+        })
     });
 }
 
 (async function mainLoop() {
     try {
         let text = await get();
-        text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
         const lines = text.split("\n");
         const lastLines = lines.slice(-50);
@@ -53,27 +58,62 @@ async function send(message) {
             lastLines.map(async line => {
                 const [user, ...rest] = line.split(";");
                 const message = rest.join(";");
-                const decrypted = await aesDecrypt(message, CONFIG.KEY);
-                return `<div>${user}: <msg>${decrypted}</msg></div>`;
+                let decrypted = await aesDecrypt(message, CONFIG.KEY);
+
+                if (user.slice(0, 7) == "FILEMAN") {
+                    const blob = new Blob([decrypted], { type: "text/plain" });
+                    const url = URL.createObjectURL(blob);
+                    const filename = user.slice(8) || "file";
+
+                    return `<div>FILEMAN: <msg><a href="${url}" download="${filename}">${filename}</a></msg></div>`;
+                } else {
+                    decrypted = decrypted.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                    return `<div>${user}: <msg>${decrypted}</msg></div>`;
+                }
             })
         );
 
-        chat.innerHTML = chat.innerHTML = html.join("\n");;
-    } catch {
+        chat.innerHTML = html.join("\n");
+
+        const now = new Date();
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+        const seconds = now.getSeconds();
+
+        lastMsg.innerText = `Last Received ${hours}:${minutes}:${seconds}`;
+    } catch (e) {
         chat.innerHTML = "<div>huh, that's an error. well either wait or contact your local system administrator.</div>";
+        console.error(e);
     }
 
     mainLoop();
 })();
 
-const input = document.getElementById("msg");
-
-async function sendBtn() {
-    if (input.value) { send(await aesEncrypt(input.value, CONFIG.KEY)); }
-    input.value = "";
+const msg = document.getElementById("msg");
+async function msgBtn() {
+    if (msg.value) { send(await aesEncrypt(msg.value, CONFIG.KEY)); }
+    msg.value = "";
 }
-input.addEventListener("keydown", function (event) {
+msg.addEventListener("keydown", function (event) {
     if (event.key === "Enter") {
-        document.getElementById("send").click()
+        document.getElementById("msgBtn").click()
     }
 })
+
+const fileInput = document.getElementById("file");
+async function fileBtn() {
+    if (fileInput.value) {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = async () => {
+            const encryptedFile = await aesEncrypt(reader.result, CONFIG.KEY);
+
+            send(encryptedFile, `FILEMAN-${file.name}`)
+
+            fileInput.value = "";
+        };
+
+        reader.readAsText(file);
+    }
+}
